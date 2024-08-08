@@ -4,15 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"go.uber.org/zap"
-	"gopkg.in/yaml.v3"
 	"log"
 	"os"
 	"simple-one-api/pkg/mylog"
 	"simple-one-api/pkg/utils"
 	"sort"
 	"strings"
+
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 var GSOAConf *Configuration
@@ -22,6 +23,7 @@ var LoadBalancingStrategy string
 var ServerPort string
 var APIKey string
 var Debug bool
+var FallbackModel string
 var LogLevel string
 var SupportModels map[string]string
 var GlobalModelRedirect map[string]string
@@ -90,6 +92,7 @@ type Configuration struct {
 	ServerPort         string                    `json:"server_port" yaml:"server_port"`
 	Debug              bool                      `json:"debug" yaml:"debug"`
 	LogLevel           string                    `json:"log_level" yaml:"log_level"`
+	FallbackModel      string                    `json:"fallback_model" yaml:"fallback_model"`
 	Proxy              ProxyConf                 `json:"proxy" yaml:"proxy"`
 	APIKey             string                    `json:"api_key" yaml:"api_key"`
 	LoadBalancing      string                    `json:"load_balancing" yaml:"load_balancing"`
@@ -248,6 +251,8 @@ func InitConfig(configName string) error {
 
 	Debug = conf.Debug
 
+	FallbackModel = conf.FallbackModel
+
 	LogLevel = conf.LogLevel
 	log.Println("log level: ", LogLevel)
 
@@ -282,8 +287,8 @@ func GetAllModelService(modelName string) ([]ModelDetails, error) {
 */
 
 // GetModelService 根据模型名称获取启用的服务和凭证信息
-func GetModelService(modelName string) (*ModelDetails, error) {
-	if serviceDetails, found := ModelToService[modelName]; found {
+func GetModelService(modelName *string) (*ModelDetails, error) {
+	if serviceDetails, found := ModelToService[*modelName]; found {
 		var enabledServices []ModelDetails
 		for _, sd := range serviceDetails {
 			if sd.Enabled {
@@ -292,14 +297,31 @@ func GetModelService(modelName string) (*ModelDetails, error) {
 		}
 
 		if len(enabledServices) == 0 {
-			return nil, fmt.Errorf("no enabled model %s found in the configuration", modelName)
+			return nil, fmt.Errorf("no enabled model %s found in the configuration", *modelName)
 		}
 
-		index := GetLBIndex(LoadBalancingStrategy, modelName, len(enabledServices))
+		index := GetLBIndex(LoadBalancingStrategy, *modelName, len(enabledServices))
 
 		return &enabledServices[index], nil
 	}
-	return nil, fmt.Errorf("model %s not found in the configuration", modelName)
+
+	// println("@@@@@@@@@@@@@@@@@@@@@FallbackModel:", FallbackModel)
+	*modelName = FallbackModel // Add fallback model
+
+	if serviceDetails, found := ModelToService[*modelName]; found {
+		var enabledServices []ModelDetails
+		for _, sd := range serviceDetails {
+			if sd.Enabled {
+				enabledServices = append(enabledServices, sd)
+			}
+		}
+
+		index := GetLBIndex(LoadBalancingStrategy, *modelName, len(enabledServices))
+
+		return &enabledServices[index], nil
+	}
+
+	return nil, fmt.Errorf("model %s not found in the configuration", *modelName)
 }
 
 func GetRandomEnabledModelDetails() (*ModelDetails, error) {

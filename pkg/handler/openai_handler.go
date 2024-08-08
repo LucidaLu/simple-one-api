@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/gin-gonic/gin"
-	"github.com/sashabaranov/go-openai"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"simple-one-api/pkg/adapter"
@@ -17,6 +14,10 @@ import (
 	"simple-one-api/pkg/utils"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/sashabaranov/go-openai"
+	"go.uber.org/zap"
 )
 
 var defaultReqTimeout = 10
@@ -148,6 +149,7 @@ func HandleOpenAIRequest(c *gin.Context, oaiReq *openai.ChatCompletionRequest) {
 	oaiReq.Model = gRedirectModel
 
 	s, serviceModelName, err := getModelDetails(oaiReq)
+
 	if err != nil {
 		mylog.Logger.Error(err.Error())
 		sendErrorResponse(c, http.StatusBadRequest, err.Error())
@@ -315,10 +317,12 @@ func getModelDetails(oaiReq *openai.ChatCompletionRequest) (*config.ModelDetails
 	if oaiReq.Model == config.KEYNAME_RANDOM {
 		return config.GetRandomEnabledModelDetailsV1()
 	}
-	s, err := config.GetModelService(oaiReq.Model)
+	s, err := config.GetModelService(&oaiReq.Model)
 	if err != nil {
 		return nil, "", err
 	}
+
+	// println("###########################", s, oaiReq.Model)
 
 	return s, oaiReq.Model, err
 }
